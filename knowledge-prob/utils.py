@@ -20,52 +20,57 @@ https://github.com/kmeng01/rome/blob/bef95a6afd2ca15d794bdd4e3ee0f24283f9b996/
 """
 
 import re
-
 import torch
 import transformers
-
+from accelerate import Accelerator
 
 class ModelAndTokenizer:
-  """An object to hold a GPT-style language model and tokenizer."""
+    """An object to hold a GPT-style language model and tokenizer."""
+    def __init__(
+        self,
+        model_path=None,
+        model_name=None,
+        model=None,
+        tokenizer=None,
+        low_cpu_mem_usage=False,
+        torch_dtype=None,
+    ):
+        # 初始化accelerator
+        self.accelerator = Accelerator()
 
-  def __init__(
-      self,
-      model_path=None,
-      model_name=None,
-      model=None,
-      tokenizer=None,
-      low_cpu_mem_usage=False,
-      torch_dtype=None,
-      ):
-    if model_path is not None:
-      model_name = model_path + model_name
-    if tokenizer is None:
-      assert model_name is not None
-      tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
-    if model is None:
-      assert model_name is not None
-      model = transformers.AutoModelForCausalLM.from_pretrained(
-          model_name, low_cpu_mem_usage=low_cpu_mem_usage,
-          torch_dtype=torch_dtype
-          )
-      set_requires_grad(False, model)
-      model.eval().cuda()
-    self.tokenizer = tokenizer
-    self.model = model
-    self.layer_names = [
-        n
-        for n, _ in model.named_modules()
-        if (re.match(r"^(transformer|gpt_neox)\.(h|layers)\.\d+$", n))
-    ]
-    self.num_layers = len(self.layer_names)
+        if model_path is not None:
+            model_name = model_path
+        if tokenizer is None:
+            assert model_name is not None
+            tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        if model is None:
+            assert model_name is not None
+            model = transformers.AutoModelForCausalLM.from_pretrained(
+                model_name, low_cpu_mem_usage=low_cpu_mem_usage,
+                torch_dtype=torch_dtype
+            )
+            # Assuming set_requires_grad is a function defined elsewhere
+            set_requires_grad(False, model)
+            model.eval()
 
-  def __repr__(self):
-    """String representation of this class.
-    """
-    return (
-        f"ModelAndTokenizer(model: {type(self.model).__name__} "
-        f"[{self.num_layers} layers], "
-        f"tokenizer: {type(self.tokenizer).__name__})"
+        # 使用accelerator准备模型和tokenizer
+        model, tokenizer = self.accelerator.prepare(model, tokenizer)
+
+        self.tokenizer = tokenizer
+        self.model = model
+        self.layer_names = [
+            n
+            for n, _ in model.named_modules()
+            if re.match(r"^(transformer|gpt_neox)\.(h|layers)\.\d+$", n)
+        ]
+        self.num_layers = len(self.layer_names)
+
+    def __repr__(self):
+        """String representation of this class."""
+        return (
+            f"ModelAndTokenizer(model: {type(self.model).__name__} "
+            f"[{self.num_layers} layers], "
+            f"tokenizer: {type(self.tokenizer).__name__})"
         )
 
 
@@ -114,10 +119,11 @@ def find_token_range(tokenizer, token_array, substring):
 
 
 def predict_from_input(model, inp):
-  out = model(**inp)["logits"]
-  probs = torch.softmax(out[:, -1], dim=1)
-  p, preds = torch.max(probs, dim=1)
-  return preds, p
+    out = model(**inp)
+    out = mt.accelerator.gather(out)["logits"]
+    probs = torch.softmax(out[:, -1], dim=1)
+    p, preds = torch.max(probs, dim=1)
+    return preds, p
 
 
 def set_requires_grad(requires_grad, *models):

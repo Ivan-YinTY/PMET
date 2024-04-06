@@ -30,11 +30,14 @@ def get_tfidf_vectorizer(data_dir: str):
     with open(vocab_loc, "r") as f:
         vocab = json.load(f)
 
-    class MyVectorizer(TfidfVectorizer):
-        TfidfVectorizer.idf_ = idf
+    # Initialize the vectorizer with the precomputed vocabulary
+    vec = TfidfVectorizer(vocabulary=vocab)
 
-    vec = MyVectorizer()
-    vec.vocabulary_ = vocab
+    # Fit the vectorizer to assign the correct value to _tfidf
+    vec.fit([''])  # Fit with an empty document to initialize _tfidf
+    vec.idf_ = idf  # Set the precomputed idf values
+
+    # Replace the _idf_diag attribute with the precomputed idf values
     vec._tfidf._idf_diag = sp.spdiags(idf, diags=0, m=len(idf), n=len(idf))
 
     return vec

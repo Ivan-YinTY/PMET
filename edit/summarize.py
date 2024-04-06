@@ -18,9 +18,7 @@ def main(
 ):  # runs = None -> all runs
     summaries = []
     uncompressed = []
-    with open(RESULTS_DIR / dir_name / runs[0] /  'params.json', "r") as f:
-        params = json.load(f)
-        print(params)
+
     for run_dir in (RESULTS_DIR / dir_name if not abs_path else dir_name).iterdir():
         # Skip if we're not interested
         if runs is not None and all(run not in str(run_dir) for run in runs):
@@ -30,7 +28,6 @@ def main(
         cur_sum = collections.defaultdict(lambda: [])
         files = list(run_dir.glob("*case_*.json"))
         files.sort(key=lambda x: int(str(x).split("_")[-1].split(".")[0]))
-        cases = 0
         for case_file in files:
             try:
                 with open(case_file, "r") as f:
@@ -39,7 +36,7 @@ def main(
                 print(f"Could not decode {case_file} due to format error; skipping.")
 
             case_id = data["case_id"]
-            if first_n_cases is not None and cases >= first_n_cases:
+            if first_n_cases is not None and case_id >= first_n_cases:
                 break
 
             if "time" in data:
@@ -107,7 +104,7 @@ def main(
                 for key in ["ngram_entropy", "reference_score", "essence_score"]:
                     if prefix in data and key in data[prefix]:
                         cur_sum[f"{prefix}_{key}"].append(data[prefix][key])
-            cases += 1
+
         if len(cur_sum) == 0:
             continue
 
@@ -152,10 +149,10 @@ def main(
 
                     cur_sum[f"{prefix}_score"] = (hmean(hmean_list), np.nan)
                     break
+
         cur_sum.update(metadata)
         pprint(cur_sum)
         summaries.append(cur_sum)
-
 
     return uncompressed if get_uncompressed else summaries
 
@@ -165,9 +162,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dir_name", 
-        default=None,
-        type=str, help="Name of directory to scan for runs."
+        "--dir_name", type=str, help="Name of directory to scan for runs."
     )
     parser.add_argument(
         "--runs",
